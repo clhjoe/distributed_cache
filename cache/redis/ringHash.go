@@ -2,6 +2,11 @@ package redis
 
 import (
 	"errors"
+	"reflect"
+)
+
+const (
+	structTag = "redis"
 )
 
 func (c *Ring) HIncrBy(key, field string, incr int64) (reply int64, err error) {
@@ -87,6 +92,25 @@ func (c *Ring) HMSet(key string, fields map[string]interface{}) (reply interface
 
 	return
 }
+
+func (c *Ring) HMSetStruct(key string, obj interface{}) (reply interface{}, err error) {
+	t := reflect.TypeOf(obj)
+	v := reflect.ValueOf(obj)
+	var data = make(map[string]interface{})
+
+	for i := 0; i < t.NumField(); i++ {
+		redisTag := t.Field(i).Tag.Get(structTag)
+		if redisTag == "-" || redisTag == "" {
+			continue
+		}
+		data[redisTag] = v.Field(i).Interface()
+	}
+	if len(data) == 0 {
+		return
+	}
+	return c.HMSet(key, data)
+}
+
 func removeDuplicates(elements []string) []string {
 	// Use map to record duplicates as we find them.
 	encountered := map[string]bool{}
