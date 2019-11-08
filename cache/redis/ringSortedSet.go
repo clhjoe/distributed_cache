@@ -1,6 +1,8 @@
 package redis
 
 import (
+	"errors"
+
 	"github.com/go-redis/redis"
 )
 
@@ -251,7 +253,75 @@ func (c *Ring) ZRangeByLex(key string, opt redis.ZRangeBy) (reply []string, err 
 
 	return
 }
+func (c *Ring) PipelineMultiZRangeByScoreWithScores(keys []string, opt redis.ZRangeBy) (reply map[string][]Z, err error) {
+	dedupKeys := map[string]bool{}
+	task := make([][]string, c.ShardSize)
+	shardErr := make(chan error, c.ShardSize)
+	shardRes := make(chan map[string][]Z, c.ShardSize)
 
+	//將key放到不同的shard陣列中，並且忽略重複的key
+	for _, key := range keys {
+		if _, exist := dedupKeys[key]; exist {
+			continue
+		}
+		dedupKeys[key] = true
+		shardNum, _ := c.getShardNumberByKey(key)
+		task[shardNum] = append(task[shardNum], key)
+	}
+	reply = make(map[string][]Z, len(dedupKeys))
+	//每個shard陣列用一個goroutine利用pipeline取得資料
+	for shardNum, v := range task {
+		if len(v) == 0 {
+			shardRes <- nil
+			shardErr <- nil
+			continue
+		}
+
+		go func(shardNum int, keys ...string) {
+			shard, _ := c.getShardByRedisNumber(shardNum)
+			cmds := make(map[string]*redis.ZSliceCmd, len(keys))
+			pl := shard.Pipeline()
+			for _, k := range keys {
+				cmds[k] = pl.ZRangeByScoreWithScores(k, opt)
+			}
+			pl.Exec()
+			res := make(map[string][]Z, len(keys))
+			var errs error
+			var err error
+
+			for k, v := range cmds {
+				res[k], err = v.Result()
+				if err != nil {
+					errs = err
+					break
+				}
+			}
+			shardErr <- errs
+			shardRes <- res
+
+		}(shardNum, v...)
+
+	}
+	//recieve all res,err from channel
+	errMsg := ""
+	for i := 0; i < c.ShardSize; i++ {
+		if r := <-shardErr; r != nil {
+			errMsg += "," + r.Error()
+		}
+		res := <-shardRes
+		if len(res) == 0 {
+			continue
+		}
+		for k, v := range res {
+			reply[k] = v
+		}
+	}
+	if errMsg != "" {
+		err = errors.New(errMsg)
+	}
+	return
+
+}
 func (c *Ring) ZRangeByScoreWithScores(key string, opt redis.ZRangeBy) (reply []Z, err error) {
 	shard, rerr := c.getShardByKey(key)
 
