@@ -2,7 +2,6 @@ package redis
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 )
 
@@ -127,40 +126,6 @@ func removeDuplicates(elements []string) []string {
 	}
 	// Return the new slice.
 	return result
-}
-func ScanStruct(src []interface{}, dest interface{}) error {
-	d := reflect.ValueOf(dest)
-	if d.IsNil() {
-		return errors.New("nil struct passed")
-	}
-	d = d.Elem()
-	if d.Kind() != reflect.Struct {
-		return errors.New("error scan element")
-	}
-	ss := structSpecForType(d.Type())
-
-	if len(src)%2 != 0 {
-		return errors.New("redigo.ScanStruct: number of values not a multiple of 2")
-	}
-
-	for i := 0; i < len(src); i += 2 {
-		s := src[i+1]
-		if s == nil {
-			continue
-		}
-		name, ok := src[i].([]byte)
-		if !ok {
-			return fmt.Errorf("redigo.ScanStruct: key %d not a bulk string value", i)
-		}
-		fs := ss.fieldSpec(name)
-		if fs == nil {
-			continue
-		}
-		if err := convertAssignValue(d.FieldByIndex(fs.index), s); err != nil {
-			return fmt.Errorf("redigo.ScanStruct: cannot assign field %s: %v", fs.name, err)
-		}
-	}
-	return nil
 }
 
 //PipelineMultiHGetAll allows you to retrieve multiple hash data from different shards by pipeline and goroutine
