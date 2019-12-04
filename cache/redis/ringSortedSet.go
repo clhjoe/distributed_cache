@@ -253,7 +253,7 @@ func (c *Ring) ZRangeByLex(key string, opt redis.ZRangeBy) (reply []string, err 
 
 	return
 }
-func (c *Ring) PipelineMultiZRangeByScoreWithScores(keys []string, opt redis.ZRangeBy) (reply map[string][]Z, err error) {
+func (c *Ring) PipelineMultiZRevRangeByScoreWithScores(keys []string, opt redis.ZRangeBy) (reply map[string][]Z, err error) {
 	dedupKeys := map[string]bool{}
 	task := make([][]string, c.ShardSize)
 	shardErr := make(chan error, c.ShardSize)
@@ -282,7 +282,7 @@ func (c *Ring) PipelineMultiZRangeByScoreWithScores(keys []string, opt redis.ZRa
 			cmds := make(map[string]*redis.ZSliceCmd, len(keys))
 			pl := shard.Pipeline()
 			for _, k := range keys {
-				cmds[k] = pl.ZRangeByScoreWithScores(k, opt)
+				cmds[k] = pl.ZRevRangeByScoreWithScores(k, opt)
 			}
 			pl.Exec()
 			res := make(map[string][]Z, len(keys))
